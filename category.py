@@ -11,7 +11,7 @@ params = {
     "limit": 50
 }
 all_markets = []
-
+bet_ids = []
 events = requests.get(f"{BASE}/events", params=params).json()
 for event in events:
     for market in event.get("markets", []):
@@ -23,10 +23,12 @@ for event in events:
         #     "event": event.get("title"),
         # })
         all_markets.append(market)
+        bet_ids.append(market.get("id"))
 
 top50 = sorted(all_markets, key=lambda m: float(m.get("volume") or 0), reverse=True)[:50]
 print("-" * 80)
-
-for i, m in enumerate(top50, 1):
-    b = bet.Bet(m["id"])
+bets = []
+for i, m in enumerate(bet_ids, 1):
+    b = bet.Bet(m)
+    bets.append(b)
     b.summary()
