@@ -23,8 +23,8 @@ class Bet:
     
     def fetch_market_data(self):
         r = requests.get(f"{self.GAMMA}/markets/{self.conditionId}")
-        print(r.status_code)
-        print(r.text)
+        # print(r.status_code)
+        # print(r.text)
         r.raise_for_status()
         data = r.json()
 
@@ -56,10 +56,15 @@ class Bet:
             f"{self.CLOB}/book",
             params={"token_id": self.token_id}
         )
+        
+        if r.status_code == 404:
+            self.bids = []
+            self.asks = []
+            return
+
         r.raise_for_status()
         book = r.json()
 
-        # Each entry is a dict: {"price": "0.53", "size": "150.0"}
         self.bids = [(float(b["price"]), float(b["size"])) for b in book.get("bids", [])]
         self.asks = [(float(a["price"]), float(a["size"])) for a in book.get("asks", [])]
         # -------------------------

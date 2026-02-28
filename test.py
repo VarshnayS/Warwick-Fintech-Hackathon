@@ -1,5 +1,5 @@
 import requests
-
+import bet
 BASE = "https://gamma-api.polymarket.com"
 
 sports = requests.get(f"{BASE}/sports").json()
@@ -50,8 +50,10 @@ for i, m in enumerate(top50, 1):
     vol24hr   = float(m.get("volume24hr") or 0)
     liquidity = float(m.get("liquidity") or 0)
     # question  = m.get("question", "N/A")
-    print(f"{i:<4} ID: {m['id']:<40} {m.get('question')}")
+    # print(f"{i:<4} ID: {m['id']:<40} {m.get('question')}")
     # print(f"{i:<4} ${volume:<14,.0f} ${vol24hr:<14,.0f} ${liquidity:<14,.0f} {question}")
+    b = bet.Bet(m["id"])
+    b.summary()
     
 # Raw EPL tags: 1,82,306,100639,100350
 
