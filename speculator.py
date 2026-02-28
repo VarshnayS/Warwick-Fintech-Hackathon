@@ -1,14 +1,10 @@
-
+import time
 import requests
 from datetime import datetime, timezone
 from top50Markets import FindTop50Markets
 
 BASE_URL= "https://arctic-shift.photon-reddit.com"
-SUBREDDIT = "PremierLeague"        
-
-def todays_date() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
+SUBREDDIT = "soccer"        
 bets = FindTop50Markets()
 
 def scrape_posts(subreddit: str, keyword: str, start_date: str) -> list[dict]:
@@ -24,6 +20,9 @@ def scrape_posts(subreddit: str, keyword: str, start_date: str) -> list[dict]:
             "sort":      "asc",
         }
         response = requests.get(f"{BASE_URL}/api/posts/search", params=params, timeout=30)
+        if response.status_code == 429:
+            time.sleep(5)
+            continue
         response.raise_for_status()
 
         batch = response.json().get("data", [])
