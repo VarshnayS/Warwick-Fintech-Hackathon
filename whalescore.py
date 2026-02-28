@@ -19,4 +19,17 @@ def average_whale_ratio(bets):
         for t in trades:
             if t.get("timestamp", 0) >= cutoff:
                 trades_4w.append(t)
+        wallet_totals = {}
+
+    for t in trades_4w:
+        wallet = t.get("proxyWallet")
+        size = t.get("size", 0)
+
+        if wallet is None:
+            continue
+
+        if wallet not in wallet_totals:
+            wallet_totals[wallet] = 0
+
+        wallet_totals[wallet] = wallet_totals[wallet] + float(size)
         
