@@ -24,18 +24,9 @@ for event in events:
         # })
         all_markets.append(market)
 
-print(all_markets[0])
-# Sort by total volume descending, take top 50
-# top50 = sorted(all_markets, key=lambda m: m["volume"], reverse=True)[:50]
 top50 = sorted(all_markets, key=lambda m: float(m.get("volume") or 0), reverse=True)[:50]
-
-
-print(f"{'#':<4} {'Volume (USDC)':<18} {'Question'}")
 print("-" * 80)
 
 for i, m in enumerate(top50, 1):
     b = bet.Bet(m["id"])
     b.summary()
-    
-# Raw EPL tags: 1,82,306,100639,100350
-
