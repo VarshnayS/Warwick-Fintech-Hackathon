@@ -27,3 +27,4 @@ def FindTop50Markets():
         bets.append(bet)
         
     return bets
+    
