@@ -1,19 +1,18 @@
-from speculator import *
+
+
+from top50Markets import FindTop50Markets
+from speculator import scrape_posts, SUBREDDIT
 
 if __name__ == "__main__":
-    all_posts = []
+    bets = FindTop50Markets()
 
-    for kw in KEYWORDS:
-        all_posts.extend(scrape_posts(SUBREDDIT, kw, START_DATE))
+    for bet in bets:
+        keyword    = bet.question    
+        start_date = bet.startDate
 
-    # De-duplicate
-    seen, unique = set(), []
-    for p in all_posts:
-        if p["id"] not in seen:
-            seen.add(p["id"])
-            unique.append(p)
+        posts = scrape_posts(SUBREDDIT, keyword, start_date)
+        match_count = len(posts)
 
-    print(f"Unique posts: {len(unique)}")
-    for p in unique[:10]:
-        dt = datetime.fromtimestamp(p["created_utc"], tz=timezone.utc).strftime("%Y-%m-%d")
-        print(f"  [{dt}] {p.get('title')}")
+        print(f"Bet: {bet.question}")
+        print(f"  Start date : {start_date}")
+        print(f"  Matches    : {match_count}\n")
