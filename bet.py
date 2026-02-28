@@ -68,8 +68,6 @@ class Bet:
         self.bids = [(float(b["price"]), float(b["size"])) for b in book.get("bids", [])]
         self.asks = [(float(a["price"]), float(a["size"])) for a in book.get("asks", [])]
         # -------------------------
-    # 3️⃣ Trades (Last 4 Weeks)
-    # -------------------------
     def fetch_trades(self):
         r = requests.get(
             "https://data-api.polymarket.com/trades",
