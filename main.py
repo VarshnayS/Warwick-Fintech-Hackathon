@@ -1,13 +1,19 @@
 from speculator import *
 
 if __name__ == "__main__":
-    matching_posts = scrape_posts(
-        subreddit=SUBREDDIT,
-        search_term=SEARCH_TERM,
-        start_date=START_DATE,
-    )
+    all_posts = []
 
-    # Example: print titles of first 10 results
-    for post in matching_posts[:10]:
-        created = datetime.fromtimestamp(post["created_utc"], tz=timezone.utc).strftime("%Y-%m-%d")
-        print(f"[{created}] {post.get('title', 'N/A')}")
+    for kw in KEYWORDS:
+        all_posts.extend(scrape_posts(SUBREDDIT, kw, START_DATE))
+
+    # De-duplicate
+    seen, unique = set(), []
+    for p in all_posts:
+        if p["id"] not in seen:
+            seen.add(p["id"])
+            unique.append(p)
+
+    print(f"Unique posts: {len(unique)}")
+    for p in unique[:10]:
+        dt = datetime.fromtimestamp(p["created_utc"], tz=timezone.utc).strftime("%Y-%m-%d")
+        print(f"  [{dt}] {p.get('title')}")
