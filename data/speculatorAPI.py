@@ -2,15 +2,16 @@
 data/speculatorAPI.py
 ---------------------
 Computes cumulative Reddit comment mentions for a prediction market
-since it became active, using the Arctic Shift Reddit API.
+since it became active.
 
-Also includes Polymarket helpers to fetch EPL markets and compute a
-speculation ratio:
+API strategy:
+  1. PullPush.io  /reddit/search/comment/  (primary — has 2025/2026 live data)
+     NOTE: total_results is NOT in PullPush metadata, so we paginate and count
+     actual returned docs instead.
+  2. Arctic Shift /api/comments/search/aggregate  (fallback — archive)
 
-    volume_to_mentions_ratio = total_volume_since_start / (total_mentions_since_start + 1)
-
-A high ratio → lots of trading relative to public discussion →
-possibly suspicious / speculative activity.
+Speculation ratio:
+    trades_to_mentions = total_trades_4w / (total_mentions + 1)
 """
 
 import re
@@ -21,65 +22,90 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 
 # ---------------------------------------------------------------------------
-# Constants
+# API URLs
 # ---------------------------------------------------------------------------
-
-ARCTIC = "https://arctic-shift.photon-reddit.com"
-REDDIT = "https://www.reddit.com"
-GAMMA  = "https://gamma-api.polymarket.com"
+PULLPUSH = "https://api.pullpush.io"
+ARCTIC   = "https://arctic-shift.photon-reddit.com"
+REDDIT   = "https://www.reddit.com"
+GAMMA    = "https://gamma-api.polymarket.com"
 
 REDDIT_HEADERS = {"User-Agent": "warwick-fintech-hackathon/0.1 (contact: demo)"}
 
-# Curated EPL subreddits — hardcoded to avoid "football → nfl/CFB" discovery bug
+# PullPush rate limits: soft 15 req/min, hard 30 req/min, 1000 req/hr
+PULLPUSH_DELAY = 2.5   # seconds between requests to stay under soft limit
+
+# ---------------------------------------------------------------------------
+# Curated EPL subreddits — hardcoded to avoid "football → nfl/CFB" problem
+# ---------------------------------------------------------------------------
 EPL_SUBREDDITS: List[str] = [
     "PremierLeague",
-    "soccer",
-    "football",    # UK-centric sub, not American football
     "FantasyPL",
-    "Championship",
+    "soccer",
 ]
 
-# Stopwords to strip from Polymarket question text when extracting keywords
+# ---------------------------------------------------------------------------
+# Team aliases — critical fix for 0-result problem.
+# Reddit users write "man city"/"mcfc", never "manchester" alone.
+# Keys are lowercased substrings that appear in Polymarket question text.
+# ---------------------------------------------------------------------------
+TEAM_ALIASES: Dict[str, List[str]] = {
+    "manchester city":   ["man city", "mcfc"],
+    "manchester united": ["man utd", "mufc"],
+    "arsenal":           ["arsenal", "gunners"],
+    "liverpool":         ["liverpool", "lfc"],
+    "chelsea":           ["chelsea", "cfc"],
+    "tottenham":         ["spurs", "tottenham"],
+    "newcastle":         ["newcastle", "nufc", "toon"],
+    "west ham":          ["west ham", "hammers"],
+    "brentford":         ["brentford"],
+    "leeds":             ["leeds", "lufc"],
+    "burnley":           ["burnley", "clarets"],
+    "everton":           ["everton", "toffees"],
+    "aston villa":       ["aston villa", "villa"],
+    "brighton":          ["brighton", "bhafc"],
+    "fulham":            ["fulham"],
+    "wolves":            ["wolves", "wwfc"],
+    "crystal palace":    ["crystal palace", "cpfc"],
+    "nottingham":        ["forest", "nffc"],
+    "bournemouth":       ["bournemouth", "afcb"],
+    "ipswich":           ["ipswich"],
+    "leicester":         ["leicester", "foxes"],
+    "southampton":       ["southampton", "saints"],
+}
+
 _STOPWORDS = {
     "will", "win", "the", "on", "in", "at", "a", "an", "and", "or", "vs",
     "end", "draw", "over", "under", "score", "first", "last", "next",
-    "this", "that", "be", "is", "are", "was", "fc", "afc", "utd", "united",
-    "city", "town", "rovers", "wanderers", "athletic",
+    "this", "that", "be", "is", "are", "was", "fc", "afc", "utd",
+    "town", "rovers", "wanderers",
 }
 
-# Strip ISO dates, times, and non-alpha characters before keyword extraction
 _JUNK_RE = re.compile(
-    r"\d{4}-\d{2}-\d{2}"  # ISO date e.g. 2026-02-28
-    r"|\d{2}:\d{2}"        # time e.g. 19:30
-    r"|[^a-z\s]"           # punctuation, digits, symbols
+    r"\d{4}-\d{2}-\d{2}"  # ISO date
+    r"|\d{2}:\d{2}"        # time
+    r"|[^a-z\s]"           # punctuation / digits
 )
 
 
 # ===========================================================================
-# Section 1 – Keyword extraction
+# Section 1 – Keyword extraction + alias expansion
 # ===========================================================================
 
-def extract_keywords(question: str, max_terms: int = 4) -> List[str]:
+def extract_keywords(question: str, max_terms: int = 6) -> List[str]:
     """
-    Extract clean, meaningful keywords from a Polymarket question string.
+    Extract meaningful tokens from a Polymarket question.
+    Does NOT strip 'united', 'city', 'west', 'ham' — these are needed
+    for alias matching. Stopword list is intentionally minimal here.
 
-    Steps:
-      1. Lowercase and strip ISO dates, times, punctuation via regex.
-      2. Split on whitespace.
-      3. Drop stopwords and short tokens (≤ 2 chars).
-      4. Deduplicate while preserving order.
-      5. Return up to max_terms tokens.
-
-    Examples:
-      "Will Manchester City FC win on 2026-02-28?"  → ["manchester"]
-      "Leeds United FC vs. Manchester City FC: O/U 2.5" → ["leeds", "manchester"]
+    "Will Manchester City FC win on 2026-02-28?" → ["manchester", "city"]
+    "Leeds United FC vs. Manchester City FC"     → ["leeds", "united", "manchester", "city"]
     """
     text = _JUNK_RE.sub(" ", question.lower())
     seen: Dict[str, bool] = {}
     result: List[str] = []
     for tok in text.split():
         tok = tok.strip()
-        if len(tok) <= 2 or tok in _STOPWORDS:
+        if len(tok) <= 1 or tok in _STOPWORDS:
             continue
         if tok not in seen:
             seen[tok] = True
@@ -88,93 +114,142 @@ def extract_keywords(question: str, max_terms: int = 4) -> List[str]:
             break
     return result
 
+def _find_team_in_question(question_lower: str) -> Optional[str]:
+    """
+    Find the best matching team key from TEAM_ALIASES in a question string.
+    Tries multi-word keys first (longer matches win).
+    Returns the team key or None.
+    """
+    # Sort by key length descending so "manchester city" matches before "manchester"
+    for team in sorted(TEAM_ALIASES.keys(), key=len, reverse=True):
+        if team in question_lower:
+            return team
+    return None
+
+
+def build_search_queries(question: str, keywords: List[str]) -> List[str]:
+    """
+    Given the full question and extracted keywords, return the best
+    Reddit search terms using team aliases.
+
+    Matches against the FULL question (not just extracted keywords)
+    to avoid partial-match bugs like "west" → tottenham.
+
+    "Will Manchester City FC win?"  → ["man city", "mcfc"]
+    "West Ham United FC"            → ["west ham", "hammers"]
+    "Leeds United FC vs Man City"   → ["leeds", "lufc"]  (first team found)
+    """
+    q_lower = question.lower()
+
+    # Find all teams mentioned in the question
+    found_aliases: List[str] = []
+    seen_teams: set = set()
+    for team in sorted(TEAM_ALIASES.keys(), key=len, reverse=True):
+        if team in q_lower and team not in seen_teams:
+            seen_teams.add(team)
+            found_aliases.extend(TEAM_ALIASES[team][:2])  # max 2 aliases per team
+        if len(found_aliases) >= 4:
+            break
+
+    if found_aliases:
+        return found_aliases
+
+    # Fallback: use raw keywords if no team matched
+    return [k for k in keywords if len(k) > 3][:3]
+
 
 # ===========================================================================
-# Section 2 – Reddit / subreddit helpers
+# Section 2 – PullPush.io (primary, has 2025/2026 data)
 # ===========================================================================
 
-def subreddit_search(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """Search Reddit for subreddits matching query."""
-    r = requests.get(
-        f"{REDDIT}/subreddits/search.json",
-        params={"q": query, "limit": limit},
-        headers=REDDIT_HEADERS,
-        timeout=20,
-    )
-    r.raise_for_status()
-    return [c["data"] for c in r.json()["data"]["children"]]
-
-
-def pick_top_subreddits(
-    seed_queries: List[str],
-    k: int = 5,
-    sport: str = "epl",
-) -> List[str]:
+def pullpush_count_term(
+    subreddit: str,
+    query:     str,
+    after_ts:  int,
+    before_ts: int,
+    max_pages: int = 3,
+    page_size: int = 100,
+) -> int:
     """
-    Return k subreddits relevant to sport.
+    Count comments matching query in subreddit between after_ts and before_ts.
 
-    For EPL: uses the curated EPL_SUBREDDITS list directly (avoids American
-    football communities appearing from generic "football" searches).
+    PullPush does NOT return total_results in metadata (confirmed broken).
+    Instead we paginate through actual results and count them.
+    Uses /reddit/search/comment/ endpoint (note trailing slash).
 
-    For other sports: ranks discovered subreddits by subscriber count.
+    max_pages=3 × page_size=100 = up to 300 comments counted per term.
+    For a 30-day window this is a reasonable upper bound for niche queries.
     """
-    if sport.lower() == "epl":
-        base = list(EPL_SUBREDDITS[:k])
-        if len(base) >= k:
-            return base
-        # Top up via discovery only if more than 5 are requested
-        seen: Dict[str, int] = {sr: 9_999_999 for sr in base}
-        for q in seed_queries:
-            try:
-                for sr in subreddit_search(q, limit=10):
-                    name = sr.get("display_name", "")
-                    if not name or sr.get("over18"):
-                        continue
-                    if name not in seen:
-                        seen[name] = int(sr.get("subscribers") or 0)
-            except Exception:
-                pass
-        return [n for n, _ in sorted(seen.items(), key=lambda x: x[1], reverse=True)[:k]]
+    url    = f"{PULLPUSH}/reddit/search/comment/"
+    total  = 0
+    before = before_ts  # paginate backwards using 'before' cursor
 
-    # Generic path for non-EPL sports
-    seen2: Dict[str, int] = {}
-    for q in seed_queries:
+    for page in range(max_pages):
+        params = {
+            "subreddit": subreddit,
+            "q":         query,
+            "after":     after_ts,
+            "before":    before,
+            "size":      page_size,
+            "sort":      "desc",
+            "sort_type": "created_utc",
+        }
         try:
-            for sr in subreddit_search(q, limit=15):
-                name = sr.get("display_name", "")
-                if not name or sr.get("over18"):
-                    continue
-                subs = int(sr.get("subscribers") or 0)
-                if name not in seen2 or subs > seen2[name]:
-                    seen2[name] = subs
-        except Exception:
-            pass
-    return [n for n, _ in sorted(seen2.items(), key=lambda x: x[1], reverse=True)[:k]]
+            time.sleep(PULLPUSH_DELAY)
+            r = requests.get(url, params=params, timeout=(5, 15))
+            if r.status_code == 429:
+                time.sleep(10)
+                continue
+            r.raise_for_status()
+            data = r.json().get("data", [])
+        except Exception as exc:
+            break
+
+        if not data:
+            break
+
+        total  += len(data)
+        # Move cursor back to oldest item in this page for next iteration
+        oldest  = min(int(d.get("created_utc", before)) for d in data)
+        before  = oldest - 1
+
+        if len(data) < page_size:
+            break  # last page
+
+    return total
+
+
+def pullpush_total(
+    subreddit:    str,
+    search_terms: List[str],
+    after_ts:     int,
+    before_ts:    int,
+    verbose:      bool = False,
+) -> int:
+    """Sum PullPush counts across all search terms."""
+    total = 0
+    for term in search_terms:
+        count = pullpush_count_term(subreddit, term, after_ts, before_ts)
+        if verbose:
+            print(f"      [PullPush] '{term}' → {count}")
+        total += count
+    return total
 
 
 # ===========================================================================
-# Section 3 – Arctic Shift (Reddit comment aggregation)
+# Section 3 – Arctic Shift (fallback, archive data)
 # ===========================================================================
 
 def iso_date(dt: datetime) -> str:
-    """Return UTC date string 'YYYY-MM-DD'."""
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%d")
 
 
 def _normalize_subreddit(sr: str) -> str:
-    """Convert 'r/soccer' → 'soccer'."""
     sr = sr.strip()
     return sr[2:] if sr.lower().startswith("r/") else sr
 
 
 def _extract_buckets(payload: Any) -> List[Dict[str, Any]]:
-    """
-    Extract daily bucket list from Arctic Shift aggregate response.
-    Handles three possible shapes:
-      - raw list of buckets
-      - {"buckets": [...]}
-      - {"aggregations": {field: {"buckets": [...]}}}
-    """
     if isinstance(payload, list):
         return payload
     if isinstance(payload, dict):
@@ -190,88 +265,110 @@ def _extract_buckets(payload: Any) -> List[Dict[str, Any]]:
 
 def arctic_aggregate_comments(
     subreddit: str,
-    query: str,
-    after: str,
-    before: str,
-    retries: int = 2,
+    query:     str,
+    after:     str,
+    before:    str,
+    retries:   int = 2,
 ) -> Optional[Any]:
-    """
-    Call GET /api/comments/search/aggregate on Arctic Shift.
-    Returns parsed JSON or None if all attempts fail.
-    Uses (3s connect, 8s read) timeouts with exponential back-off.
-    """
     params = {
         "aggregate": "created_utc",
         "frequency": "day",
-        "subreddit": _normalize_subreddit(subreddit),
-        "body": query,
-        "after": after,
-        "before": before,
+        "subreddit":  _normalize_subreddit(subreddit),
+        "body":       query,
+        "after":      after,
+        "before":     before,
     }
-    last_err: Optional[Exception] = None
     for attempt in range(retries):
         try:
             r = requests.get(
                 f"{ARCTIC}/api/comments/search/aggregate",
-                params=params,
-                timeout=(3, 8),
+                params=params, timeout=(3, 8),
             )
+            if r.status_code in (422, 400):
+                return None  # not indexed — don't retry
             r.raise_for_status()
             return r.json()
-        except Exception as exc:
-            last_err = exc
-            time.sleep(0.4 * (2 ** attempt))  # 0.4s, then 0.8s
-
-    print(f"[WARN] Arctic Shift failed for r/{subreddit} query='{query}': {last_err}")
+        except Exception:
+            time.sleep(0.4 * (2 ** attempt))
     return None
 
 
+def arctic_total(
+    subreddit:    str,
+    search_terms: List[str],
+    after:        str,
+    before:       str,
+) -> int:
+    total = 0
+    for term in search_terms:
+        payload = arctic_aggregate_comments(subreddit, term, after, before)
+        if payload is None:
+            continue
+        total += sum(int(b.get("doc_count", 0)) for b in _extract_buckets(payload))
+    return total
+
+
+# ===========================================================================
+# Section 4 – Combined mention counter
+# ===========================================================================
+
 def cumulative_mentions_since_start(
-    bet_start_time_utc: datetime,
-    subreddits: List[str],
-    query_terms: List[str],
-    time_budget_seconds: float = 30.0,
-    verbose: bool = True,
+    bet_start_time_utc:  datetime,
+    subreddits:          List[str],
+    question:            str,
+    query_terms:         Optional[List[str]] = None,
+    time_budget_seconds: float = 60.0,
+    verbose:             bool  = True,
 ) -> int:
     """
-    Total Reddit comments mentioning query_terms across all subreddits
-    since bet_start_time_utc. One HTTP request per subreddit.
+    Count Reddit comments mentioning the market's team(s) across subreddits
+    since bet_start_time_utc.
 
-    Stops early if time_budget_seconds is exhausted.
+    Pass the full `question` string for accurate alias matching.
+    `query_terms` are base keywords; aliases are expanded automatically.
+
+    Uses PullPush (primary) then Arctic Shift (fallback).
     """
-    after  = iso_date(bet_start_time_utc)
-    before = iso_date(datetime.now(timezone.utc))
-    query  = " ".join(t.strip() for t in query_terms if t.strip())
+    after_dt  = bet_start_time_utc.astimezone(timezone.utc)
+    before_dt = datetime.now(timezone.utc)
+    after_ts  = int(after_dt.timestamp())
+    before_ts = int(before_dt.timestamp())
+    after_str = iso_date(after_dt)
+    before_str= iso_date(before_dt)
 
-    if not query:
-        print("[WARN] No query terms supplied – returning 0 mentions.")
+    kw = query_terms or extract_keywords(question)
+    search_terms = build_search_queries(question, kw)
+
+    if not search_terms:
+        print("[WARN] No search terms found – returning 0.")
         return 0
 
     if verbose:
-        print(f"   [Reddit] query='{query}'  after={after}  before={before}")
+        print(f"   [Reddit] search_terms={search_terms}")
+        print(f"            after={after_str}  before={before_str}")
 
     deadline = time.time() + time_budget_seconds
     total    = 0
 
     for sr in subreddits:
         if time.time() > deadline:
-            print("[WARN] Time budget exhausted; skipping remaining subreddits.")
+            print(f"[WARN] Time budget exhausted after r/{sr}.")
             break
 
-        t0      = time.time()
-        payload = arctic_aggregate_comments(sr, query, after, before)
+        t0 = time.time()
+
+        # Try PullPush first
+        count = pullpush_total(sr, search_terms, after_ts, before_ts, verbose=verbose)
+
+        # Arctic Shift fallback only if PullPush gave 0
+        if count == 0:
+            count = arctic_total(sr, search_terms, after_str, before_str)
+
         elapsed = time.time() - t0
-
-        if payload is None:
-            if verbose:
-                print(f"   [Reddit] r/{sr:<20}  FAILED  ({elapsed:.1f}s)")
-            continue
-
-        count  = sum(int(b.get("doc_count", 0)) for b in _extract_buckets(payload))
-        total += count
+        total  += count
 
         if verbose:
-            print(f"   [Reddit] r/{sr:<20}  {count:>6} mentions  ({elapsed:.1f}s)")
+            print(f"   [Reddit] r/{sr:<22}  {count:>6} mentions  ({elapsed:.1f}s)")
 
     if verbose:
         print(f"   [Reddit] TOTAL mentions: {total}")
@@ -280,7 +377,43 @@ def cumulative_mentions_since_start(
 
 
 # ===========================================================================
-# Section 4 – Polymarket helpers
+# Section 5 – Reddit subreddit helpers
+# ===========================================================================
+
+def subreddit_search(query: str, limit: int = 10) -> List[Dict[str, Any]]:
+    r = requests.get(
+        f"{REDDIT}/subreddits/search.json",
+        params={"q": query, "limit": limit},
+        headers=REDDIT_HEADERS, timeout=20,
+    )
+    r.raise_for_status()
+    return [c["data"] for c in r.json()["data"]["children"]]
+
+
+def pick_top_subreddits(
+    seed_queries: List[str],
+    k: int = 3,
+    sport: str = "epl",
+) -> List[str]:
+    if sport.lower() == "epl":
+        return list(EPL_SUBREDDITS[:k])
+    seen: Dict[str, int] = {}
+    for q in seed_queries:
+        try:
+            for sr in subreddit_search(q, limit=15):
+                name = sr.get("display_name", "")
+                if not name or sr.get("over18"):
+                    continue
+                subs = int(sr.get("subscribers") or 0)
+                if name not in seen or subs > seen[name]:
+                    seen[name] = subs
+        except Exception:
+            pass
+    return [n for n, _ in sorted(seen.items(), key=lambda x: x[1], reverse=True)[:k]]
+
+
+# ===========================================================================
+# Section 6 – Polymarket data structures
 # ===========================================================================
 
 @dataclass
@@ -291,18 +424,18 @@ class PolymarketMarket:
     volume_24hr: float
     liquidity:   float
     event_title: str
+    trades_4w:   int = 0   # populated from data.bet.Bet.total_trades_4w
     raw:         Dict[str, Any] = field(repr=False, default_factory=dict)
 
 
 def fetch_polymarket_events(
-    tag_id:    int  = 82,
-    active:    bool = True,
-    closed:    bool = False,
-    order:     str  = "volume",
+    tag_id: int  = 82,
+    active: bool = True,
+    closed: bool = False,
+    order:  str  = "volume",
     ascending: bool = False,
-    limit:     int  = 200,
+    limit:  int  = 200,
 ) -> List[Dict[str, Any]]:
-    """Fetch raw event objects from Gamma /events. Returns [] on failure."""
     params = {
         "tag_id":    tag_id,
         "active":    str(active).lower(),
@@ -326,10 +459,6 @@ def fetch_top_markets(
     active: bool = True,
     closed: bool = False,
 ) -> List[PolymarketMarket]:
-    """
-    Return top_n markets by volume for the given Polymarket tag_id.
-    Flattens all markets across all events, sorts by volume descending.
-    """
     markets: List[PolymarketMarket] = []
     for event in fetch_polymarket_events(tag_id=tag_id, active=active, closed=closed):
         title = event.get("title", "")
@@ -348,7 +477,6 @@ def fetch_top_markets(
 
 
 def print_top_markets(markets: List[PolymarketMarket]) -> None:
-    """Pretty-print a ranked market table."""
     print(f"{'#':<4} {'Volume (USDC)':<18} {'24h Vol':<14} {'Liquidity':<14} Question")
     print("-" * 100)
     for i, m in enumerate(markets, 1):
@@ -359,39 +487,43 @@ def print_top_markets(markets: List[PolymarketMarket]) -> None:
 
 
 # ===========================================================================
-# Section 5 – Speculation ratio
+# Section 7 – Speculation ratio
 # ===========================================================================
 
 def speculation_ratio(
     market:              PolymarketMarket,
     bet_start_time_utc:  datetime,
     subreddits:          List[str],
-    query_terms:         List[str],
-    use_volume:          bool  = True,
-    time_budget_seconds: float = 30.0,
+    time_budget_seconds: float = 60.0,
 ) -> Dict[str, Any]:
     """
-    Compute: ratio = volume_since_start / (mentions_since_start + 1)
+    ratio = trades_4w / (mentions + 1)
 
-    High ratio → lots of trading vs little public discussion →
-    potentially suspicious speculative activity.
-
-    Returns a dict with all intermediate values for transparency.
+    Uses trades_4w from Bet class if available, otherwise USDC volume.
+    High ratio = lots of trading relative to Reddit discussion = suspicious.
     """
+    kw = extract_keywords(market.question)
     mentions = cumulative_mentions_since_start(
         bet_start_time_utc  = bet_start_time_utc,
         subreddits          = subreddits,
-        query_terms         = query_terms,
+        question            = market.question,
+        query_terms         = kw,
         time_budget_seconds = time_budget_seconds,
     )
-    activity = market.volume if use_volume else float(
-        market.raw.get("outcomeTokensTradedCount") or market.volume
-    )
+
+    if market.trades_4w > 0:
+        activity = float(market.trades_4w)
+        label    = "trades_to_mentions"
+    else:
+        activity = market.volume
+        label    = "volume_to_mentions"
+
     return {
         "market_id": market.id,
         "question":  market.question,
         "volume":    market.volume,
+        "trades_4w": market.trades_4w,
         "mentions":  mentions,
         "ratio":     activity / (mentions + 1),
-        "label":     "volume_to_mentions" if use_volume else "trades_to_mentions",
+        "label":     label,
     }
