@@ -13,16 +13,17 @@ params = {
 }
 
 events = requests.get(f"{BASE}/events", params=params).json()
+def FindTop50Markets():
+    bets = []
 
-bets = []
+    for event in events:
+        id = event["id"]
+        question = event["title"]
+        volume = event["volume"]
+        startDate = event["startDate"]
 
-for event in events:
-    id = event["id"]
-    question = event["title"]
-    volume = event["volume"]
-    startDate = event["startDate"]
+        bet = Bet(id, question, volume, startDate)
 
-    bet = Bet(id, question, volume, startDate)
-
-    bets.append(bet)
-
+        bets.append(bet)
+        
+    return bets
