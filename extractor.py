@@ -1,34 +1,37 @@
-import re
+EPL_TEAMS = [
+    "Arsenal", "Aston Villa", "Bournemouth", "Brentford", "Brighton",
+    "Burnley", "Chelsea", "Crystal Palace", "Everton", "Fulham",
+"Ipswich", "Leicester", "Liverpool", "Leeds", "Manchester City",
+    "Manchester United", "Newcastle", "Nottingham Forest", "Southampton",
+    "Sunderland", "Tottenham", "West Ham", "Wolves", "Luton"
+]
 
-def clean_team_name(name):
-    name = name.strip().rstrip('?.,')
-    # Remove suffixes at end
-    name = re.sub(r'\s+(FC|AFC|United|City|Hotspur|Wanderers|Athletic)$', '', name, flags=re.I)
-    # Remove prefixes at start
-    name = re.sub(r'^(AFC|FC)\s+', '', name, flags=re.I)
-    return name.strip()
+PREMIER_LEAGUE_KEYWORDS = ["title", "champion", "win the league", "premier league winner", "win the premier league"]
+TOP_4_KEYWORDS = ["top 4", "top four", "finish top", "top-4", "champions league place"]
 
 def extract_teams(question):
-    # "Team A vs Team B: ..."
-    if m := re.search(r'Will (.+?)\s+vs\.?\s+(.+?)\s+end in', question, re.I):
-        return [clean_team_name(m.group(1)), clean_team_name(m.group(2))]
+    q = question.lower()
+    teams = [team for team in EPL_TEAMS if team.lower() in q]
 
-    # "Team A vs Team B: O/U ..."
-    elif m := re.search(r'^([A-Z].+?)\s+vs\.?\s+([A-Z].+?):', question):
-        return [clean_team_name(m.group(1)), clean_team_name(m.group(2))]
+    if any(kw in q for kw in PREMIER_LEAGUE_KEYWORDS):
+        return ["Premier League"] + teams
 
-    # "Will Team win ..."
-    elif m := re.search(r'Will (.+?)\s+win', question, re.I):
-        return [clean_team_name(m.group(1))]
+    if any(kw in q for kw in TOP_4_KEYWORDS):
+        return ["Top 4"] + teams
 
-    # "Spread: Team (-1.5)"
-    elif m := re.search(r'Spread:\s*(.+?)\s*\(', question, re.I):
-        return [clean_team_name(m.group(1))]
+    return teams
 
-    return []
 
-# # Tests
-# print(extract_teams("Will AFC Bournemouth win on 2026-02-28?"))       # ['Bournemouth']
-# print(extract_teams("Will Liverpool FC vs. West Ham United FC end in a draw?"))  # ['Liverpool', 'West Ham']
-# print(extract_teams("Liverpool FC vs. West Ham United FC: O/U 2.5"))  # ['Liverpool', 'West Ham']
-# print(extract_teams("Spread: Liverpool FC (-1.5)"))   
+# Test
+questions = [
+    "Will Liverpool FC win the Premier League?",
+    "Will Arsenal FC finish top 4?",
+    "Will Liverpool FC win on 2026-02-28?",
+    "Liverpool FC vs. West Ham United FC: O/U 2.5",
+    "Spread: Manchester City FC (-1.5)",
+    "Leeds United FC vs. Manchester City FC: Both Teams to Score",
+    "Exact Score: Fulham FC 2 - 1 West Ham United FC?",
+]
+
+for q in questions:
+    print(extract_teams(q), "|", q)
