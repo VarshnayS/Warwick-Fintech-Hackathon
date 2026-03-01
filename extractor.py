@@ -22,16 +22,16 @@ def extract_teams(question):
     return teams
 
 
-# Test
-questions = [
-    "Will Liverpool FC win the Premier League?",
-    "Will Arsenal FC finish top 4?",
-    "Will Liverpool FC win on 2026-02-28?",
-    "Liverpool FC vs. West Ham United FC: O/U 2.5",
-    "Spread: Manchester City FC (-1.5)",
-    "Leeds United FC vs. Manchester City FC: Both Teams to Score",
-    "Exact Score: Fulham FC 2 - 1 West Ham United FC?",
-]
+# # Test
+# questions = [
+#     "Will Liverpool FC win the Premier League?",
+#     "Will Arsenal FC finish top 4?",
+#     "Will Liverpool FC win on 2026-02-28?",
+#     "Liverpool FC vs. West Ham United FC: O/U 2.5",
+#     "Spread: Manchester City FC (-1.5)",
+#     "Leeds United FC vs. Manchester City FC: Both Teams to Score",
+#     "Exact Score: Fulham FC 2 - 1 West Ham United FC?",
+# ]
 
-for q in questions:
-    print(extract_teams(q), "|", q)
+# for q in questions:
+#     print(extract_teams(q), "|", q)
