@@ -1,6 +1,6 @@
 from top50Markets import FindTop50Markets
 from speculator import scrape_posts, SUBREDDIT
-from extractorPro import extract_teams as extract_teams_
+from extractor import extract_teams as extract_teams_
 
 if __name__ == "__main__":
     bets = FindTop50Markets()
