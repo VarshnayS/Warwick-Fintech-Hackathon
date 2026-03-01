@@ -595,9 +595,6 @@ def single_bet():
         except: pass
 
     # ── Whale Ratio & Speculation Ratio ───────────────────────────────────────
-    # Computed lazily here so the market list page doesn't block on 50 API calls.
-    # Results are cached by conditionId so navigating back & forth is instant.
-
     @st.cache_data(ttl=300, show_spinner=False)
     def _whale(condition_id: str):
         try:
@@ -637,7 +634,22 @@ def single_bet():
         st.warning(f"Speculation ratio error: {spec_raw[1]}")
         spec_raw = None
 
-    # whale_ratio is a raw number (95th-pct / median), show it as a plain ratio (e.g. "12.4x")
+    # ── Risk Score ────────────────────────────────────────────────────────────
+    # Composite of both metrics normalised against their respective market averages:
+    #   risk_score = (equations.calc_whale_metric(avg_whale, this_whale)
+    #                 + equations.calc_whale_metric(avg_spec, this_spec)) / 2
+    avg_spec, avg_whale = load_ratios()
+
+    risk_score_raw = None
+    try:
+        from equations import calc_whale_metric
+        if whale_raw is not None and spec_raw is not None and avg_whale is not None and avg_spec is not None:
+            whale_component = calc_whale_metric(avg_whale, float(whale_raw))
+            spec_component  = calc_whale_metric(avg_spec,  float(spec_raw))
+            risk_score_raw  = 1- (whale_component + spec_component ) /2
+    except Exception as e:
+        st.warning(f"Risk score error: {e}")
+
     def fmt_whale(r):
         if r is None or r == 0:
             return "—"
@@ -646,14 +658,18 @@ def single_bet():
         except (TypeError, ValueError):
             return "—"
 
+    def fmt_risk(r):
+        if r is None:
+            return "—"
+        try:
+            v = float(r)
+            return f"{v:.2f}" if v < 10 else f"{v:.1f}"
+        except (TypeError, ValueError):
+            return "—"
+
     whale_ratio_str       = fmt_whale(whale_raw)
     speculation_ratio_str = fmt_ratio(spec_raw)
-
-    # Spread (retained as a useful third metric)
-    best_bid   = float(detail.get("bestBid")  or m.get("bestBid")  or 0)
-    best_ask   = float(detail.get("bestAsk")  or m.get("bestAsk")  or 0)
-    spread     = round((best_ask - best_bid) * 100, 1) if best_ask and best_bid else None
-    spread_str = (str(spread) + "¢") if spread is not None else "—"
+    risk_score_str        = fmt_risk(risk_score_raw)
 
     # Countdown
     countdown_str = ""
@@ -714,12 +730,12 @@ def single_bet():
 
     # ── Stats rows ─────────────────────────────────────────────────────────────
     # Row 1: volume metrics
-    # Row 2: whale ratio, speculation ratio, spread  ← replaces traders / open interest
+    # Row 2: whale ratio, speculation ratio, risk score
     row1 = [(fmt(volume), "Total Volume"), (fmt(volume24hr), "24h Volume"), (fmt(liquidity), "Liquidity")]
     row2 = [
         (whale_ratio_str,       "Whale Ratio"),
         (speculation_ratio_str, "Speculation Ratio"),
-        (spread_str,            "Spread"),
+        (risk_score_str,        "Risk Score"),
     ]
 
     def stat_tile(val, label, accent=False):
@@ -736,8 +752,7 @@ def single_bet():
         cols = st.columns(3)
         for col, (val, label) in zip(cols, row):
             with col:
-                # Accent the two custom ratio tiles so they stand out visually
-                accent = label in ("Whale Ratio", "Speculation Ratio")
+                accent = label in ("Whale Ratio", "Speculation Ratio", "Risk Score")
                 st.markdown(stat_tile(val, label, accent=accent), unsafe_allow_html=True)
 
     # Odds
