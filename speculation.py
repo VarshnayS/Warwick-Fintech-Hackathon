@@ -37,9 +37,3 @@ def find_average_speculation_ratio(bets):
         return 0
 
     return total_ratio / count
-
-from top50Markets import FindTop50Markets
-
-bets = FindTop50Markets()
-average_ratio = find_average_speculation_ratio(bets)
-print(f"Average Speculation Ratio: {average_ratio:.4f}")
