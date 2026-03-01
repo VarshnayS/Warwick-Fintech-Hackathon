@@ -5,11 +5,11 @@ BASE = "https://gamma-api.polymarket.com"
 
 params = {
     "tag_id": 82,
-    "active": "false",
-    "closed": "true",
+    "active": "true",
+    "closed": "false",
     "order": "volume",
     "ascending": "false",
-    "limit": 30,
+    "limit": 50,
 }
 
 events = requests.get(f"{BASE}/events", params=params).json()
