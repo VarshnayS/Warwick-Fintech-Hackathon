@@ -25,12 +25,14 @@ def scrape_trends(keyword: str, start_date: str) -> dict:
 
         scores = interest[keyword].tolist()
 
-        return {
+        values = {
             "peak":    max(scores),
             "mean":    round(sum(scores) / len(scores), 2),
             "current": scores[-1],                              # most recent value
             "related": related[keyword]["top"]["query"].tolist()[:5] if related[keyword]["top"] is not None else []
         }
+
+        return values["current"] / values["mean"]
 
     except Exception as e:
         print(f"  Trends error for '{keyword}': {e}")
