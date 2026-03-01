@@ -5,11 +5,7 @@ import time
 pytrends = TrendReq(hl='en-GB', tz=0)
 
 
-def scrape_trends(keyword: str, start_date: str) -> dict:
-    """
-    Get Google Trends data for a keyword from start_date to now.
-    Returns dict with interest scores and related queries.
-    """
+def scrape_trends(keyword: str, start_date: str):
     try:
         pytrends.build_payload(
             kw_list   = [keyword],
@@ -21,7 +17,7 @@ def scrape_trends(keyword: str, start_date: str) -> dict:
         related     = pytrends.related_queries()
 
         if interest.empty:
-            return {"peak": 0, "mean": 0, "current": 0, "related": []}
+            return 0.0
 
         scores = interest[keyword].tolist()
 
@@ -36,4 +32,4 @@ def scrape_trends(keyword: str, start_date: str) -> dict:
 
     except Exception as e:
         print(f"  Trends error for '{keyword}': {e}")
-        return {"peak": 0, "mean": 0, "current": 0, "related": []}
+        return 0.0

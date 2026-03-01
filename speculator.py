@@ -36,4 +36,4 @@ def scrape_posts(subreddit: str, keyword: str, start_date: str) -> list[dict]:
         last_utc = batch[-1]["created_utc"]
         after = datetime.fromtimestamp(last_utc, tz=timezone.utc).strftime("%Y-%m-%d")
 
-    return all_posts    
+    return len(all_posts)    
