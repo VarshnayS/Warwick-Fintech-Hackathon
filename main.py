@@ -6,7 +6,8 @@ if __name__ == "__main__":
     bets = FindTop50Markets()
 
     for bet in bets:
-        keywords = extract_teams(bet.question)
+        # keywords = extract_teams(bet.question)
+        keywords = "winner"
         start_date = bet.startDate[:10]
 
         total_matches = 0 
