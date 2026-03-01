@@ -1,39 +1,36 @@
-from extractor import extract_teams
 from top50Markets import FindTop50Markets
 from speculator import scrape_posts, SUBREDDIT
-
-def menu():
-    pass
-
-def prem():
-    pass
-
-def single_bet():
-    pass
+from extractorPro import extract_teams as extract_teams_
 
 if __name__ == "__main__":
     bets = FindTop50Markets()
 
     for bet in bets:
         # keywords = extract_teams(bet.question)
-        keywords = extract_teams(bet.question)
-        print(keywords)
+        keywords = extract_teams_(bet.question)
         start_date = bet.startDate[:10]
+        seen_fixtures = {}
+        cache_key  = (frozenset(keywords), start_date)
 
-        total_matches = 0 
-        seen = set()    
+        if cache_key in seen_fixtures:
+            match_count = seen_fixtures[cache_key]
+        
+        else:
 
-        for k in keywords: 
-            posts = scrape_posts(SUBREDDIT, k, start_date)
-            for p in posts: 
-                # dont add already seen posts
-                if p["id"] not in seen:
-                    seen.add(p["id"])
-                    total_matches += 1
+            total_matches = 0 
+            seen = set()    
 
-    print(f"Bet        : {bet.question}")
-    print(f"Keywords   : {keywords}")
-    print(f"Start date : {start_date}")
-    print(f"Matches    : {total_matches}\n")
+            for k in keywords: 
+                posts = scrape_posts(SUBREDDIT, k, start_date)
+                for p in posts: 
+                    # dont add already seen posts
+                    if p["id"] not in seen:
+                        seen.add(p["id"])
+                        total_matches += 1
+        print(f"{bet.question} | {start_date} | Matches: {total_matches} | Keywords: {keywords}")
 
-
+    # print(f"Bet        : {bet.question}")
+    # print(f"Keywords   : {keywords}")
+    # print(f"Start date : {start_date}")
+    # print(f"Matches    : {total_matches}\n")
+            
