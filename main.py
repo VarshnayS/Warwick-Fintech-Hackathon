@@ -1,6 +1,7 @@
 from top50Markets import FindTop50Markets
 from speculator import scrape_posts, SUBREDDIT
 from extractor import extract_teams as extract_teams_
+from google import scrape_trends
 
 if __name__ == "__main__":
     bets = FindTop50Markets()
@@ -27,7 +28,19 @@ if __name__ == "__main__":
                     if p["id"] not in seen:
                         seen.add(p["id"])
                         total_matches += 1
+                        
+        print(f"------------------REDDIT---------------------")
         print(f"{bet.question} | {start_date} | Matches: {total_matches} | Keywords: {keywords}")
+
+        trends = scrape_trends(k, start_date)
+        print(f"------------------GOOGLE------------------------")
+        print(
+            f"{k} | "
+            f"Peak: {trends['peak']} | "
+            f"Mean: {trends['mean']} | "
+            f"Current: {trends['current']} | "
+            f"Related: {trends['related']}"
+        )
 
     # print(f"Bet        : {bet.question}")
     # print(f"Keywords   : {keywords}")

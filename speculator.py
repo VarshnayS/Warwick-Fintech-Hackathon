@@ -5,7 +5,6 @@ from top50Markets import FindTop50Markets
 
 BASE_URL= "https://arctic-shift.photon-reddit.com"
 SUBREDDIT = "PremierLeague"        
-bets = FindTop50Markets()
 
 session =  requests.Session()
 
@@ -31,7 +30,7 @@ def scrape_posts(subreddit: str, keyword: str, start_date: str) -> list[dict]:
         batch = response.json().get("data", [])
         all_posts.extend(batch)
 
-        if len(batch) < 10000:  
+        if len(batch) < 50:  
             break
 
         last_utc = batch[-1]["created_utc"]
