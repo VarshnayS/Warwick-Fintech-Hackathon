@@ -1,53 +1,3 @@
-# from top50Markets import FindTop50Markets
-# from speculator import scrape_posts, SUBREDDIT
-# from extractor import extract_teams as extract_teams_
-# from google import scrape_trends
-
-
-# if __name__ == "__main__":
-#     bets = FindTop50Markets()
-
-#     for bet in bets:
-#         # keywords = extract_teams(bet.question)
-#         keywords = extract_teams_(bet.question)
-#         start_date = bet.startDate[:10]
-#         seen_fixtures = {}
-#         cache_key  = (frozenset(keywords), start_date)
-
-#         if cache_key in seen_fixtures:
-#             match_count = seen_fixtures[cache_key]
-        
-#         else:
-
-#             total_matches = 0 
-#             seen = set()    
-
-#             for k in keywords: 
-#                 posts = scrape_posts(SUBREDDIT, k, start_date)
-#                 for p in posts: 
-#                     # dont add already seen posts
-#                     if p["id"] not in seen:
-#                         seen.add(p["id"])
-#                         total_matches += 1
-                        
-#         print(f"------------------REDDIT---------------------")
-#         print(f"{bet.question} | {start_date} | Matches: {total_matches} | Keywords: {keywords}")
-
-#         trends = scrape_trends(k, start_date)
-#         print(f"------------------GOOGLE------------------------")
-#         print(
-#             f"{k} | "
-#             f"Peak: {trends['peak']} | "
-#             f"Mean: {trends['mean']} | "
-#             f"Current: {trends['current']} | "
-#             f"Related: {trends['related']}"
-#         )
-
-#     # print(f"Bet        : {bet.question}")
-#     # print(f"Keywords   : {keywords}")
-#     # print(f"Start date : {start_date}")
-#     # print(f"Matches    : {total_matches}\n")
-            
 import streamlit as st
 import requests
 
@@ -330,31 +280,73 @@ CLUB_BADGES = {
     "Wolves":               "https://a.espncdn.com/i/teamlogos/soccer/500/380.png",
 }
 
+NBA_BADGES = {
+    "Atlanta Hawks":        "https://a.espncdn.com/i/teamlogos/nba/500/atl.png",
+    "Boston Celtics":       "https://a.espncdn.com/i/teamlogos/nba/500/bos.png",
+    "Brooklyn Nets":        "https://a.espncdn.com/i/teamlogos/nba/500/bkn.png",
+    "Charlotte Hornets":    "https://a.espncdn.com/i/teamlogos/nba/500/cha.png",
+    "Chicago Bulls":        "https://a.espncdn.com/i/teamlogos/nba/500/chi.png",
+    "Cleveland Cavaliers":  "https://a.espncdn.com/i/teamlogos/nba/500/cle.png",
+    "Dallas Mavericks":     "https://a.espncdn.com/i/teamlogos/nba/500/dal.png",
+    "Denver Nuggets":       "https://a.espncdn.com/i/teamlogos/nba/500/den.png",
+    "Detroit Pistons":      "https://a.espncdn.com/i/teamlogos/nba/500/det.png",
+    "Golden State Warriors":"https://a.espncdn.com/i/teamlogos/nba/500/gs.png",
+    "Houston Rockets":      "https://a.espncdn.com/i/teamlogos/nba/500/hou.png",
+    "Indiana Pacers":       "https://a.espncdn.com/i/teamlogos/nba/500/ind.png",
+    "LA Clippers":          "https://a.espncdn.com/i/teamlogos/nba/500/lac.png",
+    "Los Angeles Clippers": "https://a.espncdn.com/i/teamlogos/nba/500/lac.png",
+    "LA Lakers":            "https://a.espncdn.com/i/teamlogos/nba/500/lal.png",
+    "Los Angeles Lakers":   "https://a.espncdn.com/i/teamlogos/nba/500/lal.png",
+    "Memphis Grizzlies":    "https://a.espncdn.com/i/teamlogos/nba/500/mem.png",
+    "Miami Heat":           "https://a.espncdn.com/i/teamlogos/nba/500/mia.png",
+    "Milwaukee Bucks":      "https://a.espncdn.com/i/teamlogos/nba/500/mil.png",
+    "Minnesota Timberwolves":"https://a.espncdn.com/i/teamlogos/nba/500/min.png",
+    "New Orleans Pelicans": "https://a.espncdn.com/i/teamlogos/nba/500/no.png",
+    "New York Knicks":      "https://a.espncdn.com/i/teamlogos/nba/500/ny.png",
+    "Oklahoma City Thunder":"https://a.espncdn.com/i/teamlogos/nba/500/okc.png",
+    "Orlando Magic":        "https://a.espncdn.com/i/teamlogos/nba/500/orl.png",
+    "Philadelphia 76ers":   "https://a.espncdn.com/i/teamlogos/nba/500/phi.png",
+    "Phoenix Suns":         "https://a.espncdn.com/i/teamlogos/nba/500/phx.png",
+    "Portland Trail Blazers":"https://a.espncdn.com/i/teamlogos/nba/500/por.png",
+    "Sacramento Kings":     "https://a.espncdn.com/i/teamlogos/nba/500/sac.png",
+    "San Antonio Spurs":    "https://a.espncdn.com/i/teamlogos/nba/500/sa.png",
+    "Toronto Raptors":      "https://a.espncdn.com/i/teamlogos/nba/500/tor.png",
+    "Utah Jazz":            "https://a.espncdn.com/i/teamlogos/nba/500/utah.png",
+    "Washington Wizards":   "https://a.espncdn.com/i/teamlogos/nba/500/wsh.png",
+}
+
+ALL_BADGES = {**CLUB_BADGES, **NBA_BADGES}
+
 def get_badge_url(question: str):
-    """Return the first matching club badge URL found in the question, or None."""
+    """Return the first matching team badge URL found in the question, or None."""
     q = question.lower()
-    for club in sorted(CLUB_BADGES.keys(), key=len, reverse=True):
-        if club.lower() in q:
-            return CLUB_BADGES[club]
+    for team in sorted(ALL_BADGES.keys(), key=len, reverse=True):
+        if team.lower() in q:
+            return ALL_BADGES[team]
     return None
 
 
 # ── Data ──────────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=120)
-def fetch_markets():
+def fetch_markets(tag_id: int = 82):
     BASE = "https://gamma-api.polymarket.com"
-    params = {"tag_id": 82, "active": "true", "closed": "false",
+    params = {"tag_id": tag_id, "active": "true", "closed": "false",
               "order": "volume", "ascending": "false", "limit": 50}
     events = requests.get(f"{BASE}/events", params=params).json()
     markets = []
     for event in events:
         for market in event.get("markets", []):
             markets.append({
-                "id":         market.get("id"),
-                "question":   market.get("question", ""),
-                "volume":     float(market.get("volume")     or 0),
-                "volume24hr": float(market.get("volume24hr") or 0),
-                "liquidity":  float(market.get("liquidity")  or 0),
+                "id":                 market.get("id"),
+                "question":           market.get("question", ""),
+                "volume":             float(market.get("volume")     or 0),
+                "volume24hr":         float(market.get("volume24hr") or 0),
+                "liquidity":          float(market.get("liquidity")  or 0),
+                "uniqueBettorsCount": market.get("uniqueBettorsCount"),
+                "openInterest":       market.get("openInterest"),
+                "bestBid":            market.get("bestBid"),
+                "bestAsk":            market.get("bestAsk"),
+                "endDate":            market.get("endDate"),
             })
     return sorted(markets, key=lambda m: m["volume"], reverse=True)[:50]
 
@@ -369,6 +361,8 @@ if "screen" not in st.session_state:
     st.session_state.screen = "menu"
 if "selected_bet" not in st.session_state:
     st.session_state.selected_bet = None
+if "league" not in st.session_state:
+    st.session_state.league = "prem"  # "prem" or "nba"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -382,32 +376,64 @@ def menu():
     </div>
     """, unsafe_allow_html=True)
 
-    _, col, _ = st.columns([1, 1, 1])
-    with col:
+    _, col1, gap, col2, _ = st.columns([0.5, 2, 0.2, 2, 0.5])
+
+    with col1:
         st.markdown("""
-            <div style="text-align:center; margin-top: 32px; margin-bottom: -16px;
-                        position: relative; z-index: 1;">
+            <div style="text-align:center; margin-top: 32px; margin-bottom: -16px; position: relative; z-index: 1;">
                 <img src="https://upload.wikimedia.org/wikipedia/en/f/f2/Premier_League_Logo.svg"
                      style="width:80px; height:80px; object-fit:contain;
                             filter: drop-shadow(0 4px 20px rgba(55,184,247,0.4));">
             </div>
         """, unsafe_allow_html=True)
-
         st.markdown('<div class="league-card-btn">', unsafe_allow_html=True)
         if st.button("PREMIER LEAGUE\nTop 50 Markets", key="go_prem", use_container_width=True):
+            st.session_state.league = "prem"
+            st.session_state.screen = "prem"
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+            <div style="text-align:center; margin-top: 32px; margin-bottom: -16px; position: relative; z-index: 1;">
+                <img src="https://a.espncdn.com/i/teamlogos/leagues/500/nba.png"
+                     style="width:80px; height:80px; object-fit:contain;
+                            filter: drop-shadow(0 4px 20px rgba(55,184,247,0.4));">
+            </div>
+        """, unsafe_allow_html=True)
+        st.markdown('<div class="league-card-btn">', unsafe_allow_html=True)
+        if st.button("NBA\nTop 50 Markets", key="go_nba", use_container_width=True):
+            st.session_state.league = "nba"
             st.session_state.screen = "prem"
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+LEAGUE_CONFIG = {
+    "prem": {
+        "tag_id": 82,
+        "title": "Premier League Markets",
+        "logo": "https://upload.wikimedia.org/wikipedia/en/f/f2/Premier_League_Logo.svg",
+    },
+    "nba": {
+        "tag_id": 745,
+        "title": "NBA Markets",
+        "logo": "https://a.espncdn.com/i/teamlogos/leagues/500/nba.png",
+    },
+}
+
 def prem():
-    st.markdown("""
-    <div class="league-header">
-        <img src="https://upload.wikimedia.org/wikipedia/en/f/f2/Premier_League_Logo.svg">
-        <div class="league-header-title">Premier League Markets</div>
-    </div>
-    """, unsafe_allow_html=True)
+    league = st.session_state.get("league", "prem")
+    cfg    = LEAGUE_CONFIG.get(league, LEAGUE_CONFIG["prem"])
+
+    st.markdown(
+        '<div class="league-header">' +
+        '<img src="' + cfg["logo"] + '">' +
+        '<div class="league-header-title">' + cfg["title"] + '</div>' +
+        '</div>',
+        unsafe_allow_html=True
+    )
 
     st.markdown('<div class="back-btn">', unsafe_allow_html=True)
     back, _ = st.columns([1, 10])
@@ -417,7 +443,7 @@ def prem():
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    markets = fetch_markets()
+    markets = fetch_markets(cfg["tag_id"])
     st.markdown('<div style="padding: 20px 40px;">', unsafe_allow_html=True)
 
     cols_per_row = 2
@@ -492,9 +518,20 @@ def single_bet():
     detail, price_history = fetch_market_detail(str(m["id"]))
 
     import json as _json
-    end_date    = (detail.get("endDate") or "")[:10]
-    description = detail.get("description") or ""
-    out_probs   = detail.get("outcomePrices", "[]")
+    from datetime import datetime, timezone
+
+    # detail may be empty if market ID didn't resolve — fall back to card data
+    # also try pulling fields from the card dict itself (m) as fallback
+    def _get(*keys, src=detail, fallback=None):
+        for k in keys:
+            v = src.get(k)
+            if v not in (None, "", "0", 0):
+                return v
+        return fallback
+
+    end_date    = (_get("endDate", "end_date_iso") or "")[:10]
+    description = _get("description") or ""
+    out_probs   = _get("outcomePrices") or "[]"
     if isinstance(out_probs, str):
         try:    out_probs = _json.loads(out_probs)
         except: out_probs = []
@@ -504,6 +541,29 @@ def single_bet():
         try:
             yes_prob = round(float(out_probs[0]) * 100, 1)
             no_prob  = round(float(out_probs[1]) * 100, 1)
+        except: pass
+
+    # Extra metrics — try detail first, then fall back to the card dict m
+    traders_raw  = detail.get("uniqueBettorsCount") or detail.get("uniqueTraders") or m.get("uniqueBettorsCount") or m.get("uniqueTraders")
+    traders      = int(traders_raw) if traders_raw else None
+    open_raw     = detail.get("openInterest") or m.get("openInterest")
+    open_int     = float(open_raw) if open_raw else None
+    best_bid     = float(detail.get("bestBid")  or m.get("bestBid")  or 0)
+    best_ask     = float(detail.get("bestAsk")  or m.get("bestAsk")  or 0)
+    spread       = round((best_ask - best_bid) * 100, 1) if best_ask and best_bid else None
+
+    # Countdown
+    countdown_str = ""
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            delta  = end_dt - datetime.now(timezone.utc)
+            if delta.total_seconds() > 0:
+                days  = delta.days
+                hours = delta.seconds // 3600
+                countdown_str = str(days) + "d " + str(hours) + "h"
+            else:
+                countdown_str = "Closed"
         except: pass
 
     badge_url = get_badge_url(question)
@@ -519,6 +579,8 @@ def single_bet():
     closes_html = ""
     if end_date:
         closes_html = 'Closes &nbsp;<span style="color:#888;">' + end_date + "</span>"
+        if countdown_str:
+            closes_html += '&nbsp;&nbsp;<span style="color:#37b8f7;font-weight:600;">' + countdown_str + " left</span>"
 
     desc_block = ""
     if description:
@@ -548,18 +610,28 @@ def single_bet():
         unsafe_allow_html=True
     )
 
-    # Stats row using native columns
-    c1, c2, c3 = st.columns(3)
-    for col, label, val in [(c1, "Total Volume", fmt(volume)), (c2, "24h Volume", fmt(volume24hr)), (c3, "Liquidity", fmt(liquidity))]:
-        with col:
-            st.markdown(
-                '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);'
-                'border-radius:12px;padding:20px;text-align:center;margin:0 40px 0 40px;">'
-                '<div style="font-family:Bebas Neue,sans-serif;font-size:2rem;color:#fff;letter-spacing:0.05em;">' + val + '</div>'
-                '<div style="font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;color:#555;margin-top:4px;">' + label + '</div>'
-                '</div>',
-                unsafe_allow_html=True
-            )
+    # Stats row — 6 tiles across 2 rows
+    traders_str  = str(traders) if traders is not None else "—"
+    open_int_str = fmt(open_int) if open_int is not None else "—"
+    spread_str   = (str(spread) + "¢") if spread is not None else "—"
+
+    row1 = [(fmt(volume), "Total Volume"), (fmt(volume24hr), "24h Volume"), (fmt(liquidity), "Liquidity")]
+    row2 = [(traders_str, "Traders"), (open_int_str, "Open Interest"), (spread_str, "Spread")]
+
+    def stat_tile(val, label):
+        return (
+            '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);'
+            'border-radius:12px;padding:20px;text-align:center;">'
+            '<div style="font-family:Bebas Neue,sans-serif;font-size:1.8rem;color:#fff;letter-spacing:0.05em;">' + val + '</div>'
+            '<div style="font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;color:#555;margin-top:4px;">' + label + '</div>'
+            '</div>'
+        )
+
+    for row in [row1, row2]:
+        cols = st.columns(3)
+        for col, (val, label) in zip(cols, row):
+            with col:
+                st.markdown(stat_tile(val, label), unsafe_allow_html=True)
 
     # Odds
     st.markdown(
@@ -625,26 +697,3 @@ elif screen == "prem":
     prem()
 elif screen == "single_bet":
     single_bet()
-
-
-if __name__ == "__main__":
-    from extractor import extract_teams
-    from top50Markets import FindTop50Markets
-    from speculator import scrape_posts, SUBREDDIT
-
-    bets = FindTop50Markets()
-    for bet in bets:
-        keywords = extract_teams(bet.question)
-        start_date = bet.startDate[:10]
-        total_matches = 0
-        seen = set()
-        for k in keywords:
-            posts = scrape_posts(SUBREDDIT, k, start_date)
-            for p in posts:
-                if p["id"] not in seen:
-                    seen.add(p["id"])
-                    total_matches += 1
-        print(f"Bet        : {bet.question}")
-        print(f"Keywords   : {keywords}")
-        print(f"Start date : {start_date}")
-        print(f"Matches    : {total_matches}\n")

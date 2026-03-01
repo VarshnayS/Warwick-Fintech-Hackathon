@@ -12,12 +12,48 @@ params = {
     "limit": 50,
 }
 
+paramsNBA = {
+    "tag_id": 745,
+    "active": "true",
+    "closed": "false",
+    "order": "volume",
+    "ascending": "false",
+    "limit": 50,
+}
+
 events = requests.get(f"{BASE}/events", params=params).json()
+
+eventsNBA =requests.get(f"{BASE}/events", params=paramsNBA).json()
+ 
 
 def FindTop50Markets():
     bets = []
 
     for event in events:
+        # 1. Grab the array of markets inside the event container
+        markets = event.get("markets", [])
+        
+        market = markets[0] if markets else None
+
+        condition_id = market.get("conditionId")
+        
+        if not condition_id:
+            continue
+
+        question = market.get("question", event.get("title")) 
+        volume = market.get("volume", 0)
+        startDate = event.get("startDate")
+
+        bet = Bet(condition_id, question, volume, startDate)
+        bets.append(bet)
+        
+    return bets
+
+
+def FindTop50MarketsNBA():
+    bets = []
+
+    for event in eventsNBA:
         # 1. Grab the array of markets inside the event container
         markets = event.get("markets", [])
         
