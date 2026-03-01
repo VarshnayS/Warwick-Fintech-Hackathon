@@ -7,7 +7,7 @@ if __name__ == "__main__":
 
     for bet in bets:
         # keywords = extract_teams(bet.question)
-        keywords = "winner"
+        keywords = extract_teams(bet.question)
         start_date = bet.startDate[:10]
 
         total_matches = 0 
