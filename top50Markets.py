@@ -5,11 +5,11 @@ BASE = "https://gamma-api.polymarket.com"
 
 params = {
     "tag_id": 82,
-    "active": "true",
-    "closed": "false",
+    "active": "false",
+    "closed": "true",
     "order": "volume",
     "ascending": "false",
-    "limit": 50
+    "limit": 30,
 }
 
 events = requests.get(f"{BASE}/events", params=params).json()
@@ -27,3 +27,4 @@ def FindTop50Markets():
         bets.append(bet)
         
     return bets
+    

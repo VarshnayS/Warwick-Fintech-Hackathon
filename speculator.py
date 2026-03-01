@@ -16,9 +16,12 @@ def scrape_posts(subreddit: str, keyword: str, start_date: str) -> list[dict]:
             "subreddit": subreddit,
             "title":     keyword,
             "after":     after,
-            "limit":     100,
+            "limit":     10,
             "sort":      "asc",
         }
+        
+        time.sleep(1)
+
         response = requests.get(f"{BASE_URL}/api/posts/search", params=params, timeout=30)
         if response.status_code == 429:
             time.sleep(5)
