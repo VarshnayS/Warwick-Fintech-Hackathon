@@ -2,12 +2,22 @@ from extractor import extract_teams
 from top50Markets import FindTop50Markets
 from speculator import scrape_posts, SUBREDDIT
 
+def menu():
+    pass
+
+def prem():
+    pass
+
+def single_bet():
+    pass
+
 if __name__ == "__main__":
     bets = FindTop50Markets()
 
     for bet in bets:
         # keywords = extract_teams(bet.question)
         keywords = extract_teams(bet.question)
+        print(keywords)
         start_date = bet.startDate[:10]
 
         total_matches = 0 
@@ -25,4 +35,5 @@ if __name__ == "__main__":
     print(f"Keywords   : {keywords}")
     print(f"Start date : {start_date}")
     print(f"Matches    : {total_matches}\n")
-            
+
+
