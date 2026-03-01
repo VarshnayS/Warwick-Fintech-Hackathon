@@ -1,6 +1,7 @@
 from extractor import extract_teams
 from top50Markets import FindTop50Markets
 from speculator import scrape_posts, SUBREDDIT
+import streamlit
 
 def menu():
     pass
