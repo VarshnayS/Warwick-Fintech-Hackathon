@@ -3,6 +3,7 @@ from speculator import scrape_posts, SUBREDDIT
 from extractor import extract_teams as extract_teams_
 from google import scrape_trends
 
+
 if __name__ == "__main__":
     bets = FindTop50Markets()
 

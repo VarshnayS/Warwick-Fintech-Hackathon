@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from top50Markets import FindTop50Markets
 
 BASE_URL= "https://arctic-shift.photon-reddit.com"
-SUBREDDIT = "PremierLeague"        
+SUBREDDIT = "Soccer"        
 
 session =  requests.Session()
 
