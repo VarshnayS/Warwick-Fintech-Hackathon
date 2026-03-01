@@ -4,3 +4,6 @@ class Bet:
         self.question = question
         self.volume = volume
         self.startDate = startDate
+        self.whale_ratio = None
+        self.speculation_ratio = None
+        
