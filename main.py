@@ -338,12 +338,12 @@ def fetch_markets(tag_id: int = 82):
         for market in event.get("markets", []):
             markets.append({
                 "id":                 market.get("id"),
+                "conditionId":        market.get("conditionId"),   # needed by whalescore trades API
                 "question":           market.get("question", ""),
                 "volume":             float(market.get("volume")     or 0),
                 "volume24hr":         float(market.get("volume24hr") or 0),
                 "liquidity":          float(market.get("liquidity")  or 0),
-                "uniqueBettorsCount": market.get("uniqueBettorsCount"),
-                "openInterest":       market.get("openInterest"),
+                "startDate":          event.get("startDate", ""),   # needed by speculation ratio
                 "bestBid":            market.get("bestBid"),
                 "bestAsk":            market.get("bestAsk"),
                 "endDate":            market.get("endDate"),
@@ -354,6 +354,17 @@ def fmt(n):
     if n >= 1_000_000: return f"${n/1_000_000:.1f}M"
     if n >= 1_000:     return f"${n/1_000:.1f}K"
     return f"${n:.0f}"
+
+def fmt_ratio(r):
+    """Format a plain ratio / score. e.g. 4231.5 → '4231.5'"""
+    if r is None or r == 0:
+        return "—"
+    try:
+        v = float(r)
+        # Show as integer when large, 2 dp when small
+        return f"{v:.0f}" if v >= 10 else f"{v:.2f}"
+    except (TypeError, ValueError):
+        return "—"
 
 
 # ── Session state ─────────────────────────────────────────────────────────────
@@ -423,6 +434,18 @@ LEAGUE_CONFIG = {
     },
 }
 
+def load_ratios():
+    """Read average speculation_ratio and whale_ratio from ratios.txt."""
+    try:
+        with open("ratios.txt", "r") as f:
+            lines = [l.strip() for l in f.readlines() if l.strip()]
+        spec  = float(lines[0]) if len(lines) > 0 else None
+        whale = float(lines[1]) if len(lines) > 1 else None
+        return spec, whale
+    except Exception:
+        return 25, 25
+
+
 def prem():
     league = st.session_state.get("league", "prem")
     cfg    = LEAGUE_CONFIG.get(league, LEAGUE_CONFIG["prem"])
@@ -431,6 +454,36 @@ def prem():
         '<div class="league-header">' +
         '<img src="' + cfg["logo"] + '">' +
         '<div class="league-header-title">' + cfg["title"] + '</div>' +
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    # ── Ratios banner ─────────────────────────────────────────────────────────
+    avg_spec, avg_whale = load_ratios()
+
+    def _ratio_tile(label, value, fmt_fn):
+        val_str = fmt_fn(value) if value is not None else "—"
+        color   = "#98d3f0" if value is not None else "#444"
+        return (
+            '<div style="text-align:center;">' +
+            '<div style="font-size:0.6rem;letter-spacing:0.18em;text-transform:uppercase;' +
+            'color:#444;margin-bottom:6px;">' + label + '</div>' +
+            '<div style="font-family:Bebas Neue,sans-serif;font-size:1.5rem;' +
+            'letter-spacing:0.06em;color:' + color + '">' + val_str + '</div>' +
+            '</div>'
+        )
+
+    spec_str  = (f"{avg_spec:.0f}"  if avg_spec  is not None and avg_spec  >= 10 else (f"{avg_spec:.2f}"  if avg_spec  is not None else "—"))
+    whale_str = (f"{avg_whale:.1f}x" if avg_whale is not None else "—")
+
+    st.markdown(
+        '<div style="display:flex;align-items:center;justify-content:center;gap:60px;' +
+        'padding:16px 40px;background:rgba(55,184,247,0.04);' +
+        'border-bottom:1px solid rgba(55,184,247,0.1);">' +
+        '<div style="font-size:0.65rem;letter-spacing:0.2em;text-transform:uppercase;color:#333;">Market Averages</div>' +
+        _ratio_tile("Avg Speculation Ratio", avg_spec,  lambda v: spec_str)  +
+        '<div style="width:1px;height:32px;background:rgba(255,255,255,0.06);"></div>' +
+        _ratio_tile("Avg Whale Ratio",       avg_whale, lambda v: whale_str) +
         '</div>',
         unsafe_allow_html=True
     )
@@ -520,8 +573,6 @@ def single_bet():
     import json as _json
     from datetime import datetime, timezone
 
-    # detail may be empty if market ID didn't resolve — fall back to card data
-    # also try pulling fields from the card dict itself (m) as fallback
     def _get(*keys, src=detail, fallback=None):
         for k in keys:
             v = src.get(k)
@@ -543,14 +594,66 @@ def single_bet():
             no_prob  = round(float(out_probs[1]) * 100, 1)
         except: pass
 
-    # Extra metrics — try detail first, then fall back to the card dict m
-    traders_raw  = detail.get("uniqueBettorsCount") or detail.get("uniqueTraders") or m.get("uniqueBettorsCount") or m.get("uniqueTraders")
-    traders      = int(traders_raw) if traders_raw else None
-    open_raw     = detail.get("openInterest") or m.get("openInterest")
-    open_int     = float(open_raw) if open_raw else None
-    best_bid     = float(detail.get("bestBid")  or m.get("bestBid")  or 0)
-    best_ask     = float(detail.get("bestAsk")  or m.get("bestAsk")  or 0)
-    spread       = round((best_ask - best_bid) * 100, 1) if best_ask and best_bid else None
+    # ── Whale Ratio & Speculation Ratio ───────────────────────────────────────
+    # Computed lazily here so the market list page doesn't block on 50 API calls.
+    # Results are cached by conditionId so navigating back & forth is instant.
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _whale(condition_id: str):
+        try:
+            from whalescore import single_whale_ratio
+            return single_whale_ratio(condition_id)
+        except Exception as e:
+            return ("error", str(e))
+
+    @st.cache_data(ttl=300, show_spinner=False)
+    def _speculation(condition_id: str, question: str, volume: float, start_date: str):
+        try:
+            from speculation import find_single_speculation_ratio
+
+            class _Bet:
+                pass
+            bet = _Bet()
+            bet.id        = condition_id
+            bet.question  = question
+            bet.volume    = volume
+            bet.startDate = start_date
+            return find_single_speculation_ratio(bet)
+        except Exception as e:
+            return ("error", str(e))
+
+    condition_id = m.get("conditionId") or ""
+    start_date   = m.get("startDate", "")
+
+    with st.spinner("Computing ratios…"):
+        whale_raw = _whale(condition_id)
+        spec_raw  = _speculation(condition_id, question, volume, start_date)
+
+    # Surface errors visibly so you know what's failing
+    if isinstance(whale_raw, tuple) and whale_raw[0] == "error":
+        st.warning(f"Whale ratio error: {whale_raw[1]}")
+        whale_raw = None
+    if isinstance(spec_raw, tuple) and spec_raw[0] == "error":
+        st.warning(f"Speculation ratio error: {spec_raw[1]}")
+        spec_raw = None
+
+    # whale_ratio is a raw number (95th-pct / median), show it as a plain ratio (e.g. "12.4x")
+    def fmt_whale(r):
+        if r is None or r == 0:
+            return "—"
+        try:
+            return f"{float(r):.1f}x"
+        except (TypeError, ValueError):
+            return "—"
+
+    whale_ratio_str       = fmt_whale(whale_raw)
+    speculation_ratio_str = fmt_ratio(spec_raw)
+
+    # Spread (retained as a useful third metric)
+    best_bid   = float(detail.get("bestBid")  or m.get("bestBid")  or 0)
+    best_ask   = float(detail.get("bestAsk")  or m.get("bestAsk")  or 0)
+    spread     = round((best_ask - best_bid) * 100, 1) if best_ask and best_bid else None
+    spread_str = (str(spread) + "¢") if spread is not None else "—"
 
     # Countdown
     countdown_str = ""
@@ -593,7 +696,6 @@ def single_bet():
             '</div>'
         )
 
-    # Use st.columns to lay out the stats natively (no HTML escaping risk)
     st.markdown(
         '<div style="padding:24px 40px 0;">'
         '<div style="display:flex;align-items:center;gap:20px;padding:24px 28px;'
@@ -610,19 +712,22 @@ def single_bet():
         unsafe_allow_html=True
     )
 
-    # Stats row — 6 tiles across 2 rows
-    traders_str  = str(traders) if traders is not None else "—"
-    open_int_str = fmt(open_int) if open_int is not None else "—"
-    spread_str   = (str(spread) + "¢") if spread is not None else "—"
-
+    # ── Stats rows ─────────────────────────────────────────────────────────────
+    # Row 1: volume metrics
+    # Row 2: whale ratio, speculation ratio, spread  ← replaces traders / open interest
     row1 = [(fmt(volume), "Total Volume"), (fmt(volume24hr), "24h Volume"), (fmt(liquidity), "Liquidity")]
-    row2 = [(traders_str, "Traders"), (open_int_str, "Open Interest"), (spread_str, "Spread")]
+    row2 = [
+        (whale_ratio_str,       "Whale Ratio"),
+        (speculation_ratio_str, "Speculation Ratio"),
+        (spread_str,            "Spread"),
+    ]
 
-    def stat_tile(val, label):
+    def stat_tile(val, label, accent=False):
+        value_color = "#37b8f7" if accent and val != "—" else "#fff"
         return (
             '<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);'
             'border-radius:12px;padding:20px;text-align:center;">'
-            '<div style="font-family:Bebas Neue,sans-serif;font-size:1.8rem;color:#fff;letter-spacing:0.05em;">' + val + '</div>'
+            '<div style="font-family:Bebas Neue,sans-serif;font-size:1.8rem;color:' + value_color + ';letter-spacing:0.05em;">' + val + '</div>'
             '<div style="font-size:0.62rem;letter-spacing:0.14em;text-transform:uppercase;color:#555;margin-top:4px;">' + label + '</div>'
             '</div>'
         )
@@ -631,7 +736,9 @@ def single_bet():
         cols = st.columns(3)
         for col, (val, label) in zip(cols, row):
             with col:
-                st.markdown(stat_tile(val, label), unsafe_allow_html=True)
+                # Accent the two custom ratio tiles so they stand out visually
+                accent = label in ("Whale Ratio", "Speculation Ratio")
+                st.markdown(stat_tile(val, label, accent=accent), unsafe_allow_html=True)
 
     # Odds
     st.markdown(

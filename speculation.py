@@ -1,7 +1,7 @@
 import datetime as dt
 from speculator import scrape_posts
 from extractor import extract_teams
-from google import scrape_trends
+from trendData import scrape_trends
 
 
 def find_single_speculation_ratio(bet):
@@ -38,8 +38,17 @@ def find_average_speculation_ratio(bets):
 
     return total_ratio / count
 
-from top50Markets import FindTop50Markets
 
-bets = FindTop50Markets()
-average_ratio = find_average_speculation_ratio(bets)
-print(f"Average Speculation Ratio: {average_ratio:.4f}")
+# ── Only runs when you execute this file directly, not on import ──────────────
+if __name__ == "__main__":
+    from top50Markets import FindTop50Markets
+    from whalescore import average_whale_ratio
+
+    bets = FindTop50Markets()
+    average_speculation_ratio = find_average_speculation_ratio(bets)
+    whale_ratio = average_whale_ratio(bets)
+
+    with open("ratios.txt", "w") as f:
+        f.write(f"{average_speculation_ratio}\n")
+        f.write(f"{whale_ratio}\n")
+    print(f"Average Speculation Ratio: {average_speculation_ratio:.4f}")
