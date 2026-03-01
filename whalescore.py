@@ -27,6 +27,9 @@ def percentile(values, p):
 
 
 def single_whale_ratio(id):
+    four_weeks_ago = datetime.utcnow() - timedelta(weeks=4)
+    cutoff = four_weeks_ago.timestamp()
+
     r = requests.get(f"{BASE}/trades",params={"market": id, "limit": 1000})
     r.raise_for_status()
     trades = r.json()
@@ -55,9 +58,10 @@ def single_whale_ratio(id):
     c2 = percentile(totals_list, 95) # 95th percentile
 
     if c1 == 0:
-        continue
+        return 0
 
-    return ratio = c2 / c1
+    ratio = c2 / c1
+    return ratio 
 
 
     
@@ -65,9 +69,6 @@ def single_whale_ratio(id):
 def average_whale_ratio(bets):
     total_ratio = 0
     count = 0
-
-    four_weeks_ago = datetime.utcnow() - timedelta(weeks=4)
-    cutoff = four_weeks_ago.timestamp()
 
     for bet in bets:
         conditionId = bet.id
@@ -77,6 +78,6 @@ def average_whale_ratio(bets):
 
     if count == 0:
         return 0
-        
+
     return total_ratio / count
 
