@@ -15,19 +15,21 @@ def median(values):
         return (values[mid - 1] + values[mid]) / 2
 
 def percentile(values, p):
-    # p is between 0 and 100
     values = sorted(values)
     n = len(values)
     if n == 0:
         return 0
-    index = int((p / 100) * (n - 1))
+    if n == 1:
+        return values[0]
+    
+    index = round((p / 100) * (n - 1))
     return values[index]
 
 
 
 
 def single_whale_ratio(id):
-    four_weeks_ago = datetime.utcnow() - timedelta(weeks=4)
+    four_weeks_ago = datetime.now() - timedelta(weeks=4)
     cutoff = four_weeks_ago.timestamp()
 
     r = requests.get(f"{BASE}/trades",params={"market": id, "limit": 1000})
@@ -54,6 +56,9 @@ def single_whale_ratio(id):
 
     totals_list = list(wallet_totals.values())
 
+    if len(totals_list) < 5:
+        return 0
+
     c1 = median(totals_list)         # median
     c2 = percentile(totals_list, 95) # 95th percentile
 
@@ -71,8 +76,13 @@ def average_whale_ratio(bets):
     count = 0
 
     for bet in bets:
+
         conditionId = bet.id
         _ratio = single_whale_ratio(conditionId)
+
+        if _ratio == 0:
+            continue
+
         total_ratio += _ratio
         count += 1
 
@@ -80,4 +90,3 @@ def average_whale_ratio(bets):
         return 0
 
     return total_ratio / count
-
